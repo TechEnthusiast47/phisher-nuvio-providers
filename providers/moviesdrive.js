@@ -2,7 +2,6 @@
 // React Native compatible version with full original functionality
 
 const cheerio = require('cheerio-without-node-native');
-//
 
 // TMDB API Configuration
 const TMDB_API_KEY = '439c478a771f35c05022f9feabcca01c';
@@ -817,18 +816,6 @@ async function goFileExtractor(url) {
 function loadExtractor(url, referer = MAIN_URL) {
     const hostname = new URL(url).hostname;
 
-    // Some links from the main site are redirectors that need to be resolved first.
-    if (url.includes("?id=") || hostname.includes('techyboy4u')) {
-        return getRedirectLinks(url)
-            .then(finalLink => {
-                if (!finalLink) {
-                    return []; // Stop if redirect fails
-                }
-                // Recursively call loadExtractor with the new link
-                return loadExtractor(finalLink, url);
-            });
-    }
-
     if (hostname.includes('gdflix')) {
         return gdFlixExtractor(url, referer);
     }
@@ -867,6 +854,17 @@ function loadExtractor(url, referer = MAIN_URL) {
     if (hostname.includes('linkrit')) {
         return Promise.resolve([]);
     }
+    if (
+    hostname.includes('google.') ||
+    hostname.includes('ampproject.org') ||
+    hostname.includes('gstatic.') ||
+    hostname.includes('doubleclick.') ||
+    hostname.includes('ddl2')
+) {
+    console.warn('[Moviesdrive] Blocked redirect host:', hostname);
+    return Promise.resolve([]);
+}
+
 
     // Default case for unknown extractors, use the hostname as the source.
     const sourceName = hostname.replace(/^www\./, '');
@@ -1330,6 +1328,7 @@ function getStreams(tmdbId, mediaType = 'movie', season = null, episode = null) 
 
                 const streams = filteredLinks
                     .filter(function (link) {
+                        console.log('[Moviesdrive] Processing link from source:', link.source);
                         return link && link.url;
                     })
                     .map(function (link) {
