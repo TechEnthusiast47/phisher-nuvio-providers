@@ -1148,5 +1148,5 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = { getStreams };
 } else {
     // For React Native environment
-    global.MoviesdriveScraperModule = { getStreams };
+    global.getStreams = { getStreams };
 }
