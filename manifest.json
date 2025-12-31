@@ -504,6 +504,27 @@
       "contentLanguage": [
         "en"
       ]
+    },
+    {
+      "id": "MoviesDrive",
+      "name": "MoviesDrive",
+      "description": "MoviesDrive streaming with multiple quality options and versions",
+      "version": "1.0.0",
+      "author": "Nuvio Team",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/moviesdrive.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "mkv"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en"
+      ]
     }
   ]
 }
