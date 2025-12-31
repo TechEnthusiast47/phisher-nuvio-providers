@@ -8,7 +8,7 @@ A collection of local scrapers for the Nuvio streaming application. These scrape
 2. Go to Settings → Local Scrapers
 3. Add this repository URL:
    ```
-   https://raw.githubusercontent.com/tapframe/nuvio-providers/refs/heads/main/
+   https://raw.githubusercontent.com/phisher98/nuvio-providers/refs/heads/main/
    ```
 4. Enable the scrapers you want to use
 
@@ -133,13 +133,13 @@ Add your scraper to `manifest.json` (see existing entries for examples):
    git add .
    git commit -m "Initial commit with UHD Movies scraper"
    git branch -M main
-   git remote add origin https://github.com/tapframe/nuvio-local-scrapers.git
+   git remote add origin https://github.com/phisher98/nuvio-local-scrapers.git
    git push -u origin main
    ```
 
 3. **Get the raw URL:**
    ```
-   https://raw.githubusercontent.com/tapframe/nuvio-local-scrapers/main/
+   https://raw.githubusercontent.com/phisher98/nuvio-local-scrapers/main/
    ```
 
 ## Contributing
@@ -149,7 +149,7 @@ Add your scraper to `manifest.json` (see existing entries for examples):
 1. **Fork this repository**
    ```bash
    # Clone your fork
-   git clone https://github.com/tapframe/nuvio-local-scrapers.git
+   git clone https://github.com/phisher98/nuvio-local-scrapers.git
    cd nuvio-local-scrapers
    ```
 
