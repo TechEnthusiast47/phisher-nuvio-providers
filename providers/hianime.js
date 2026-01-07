@@ -31,17 +31,10 @@ const megaHeaders = {
 function extractMegacloud(embedUrl, effectiveType) {
     const mainUrl = 'https://megacloud.blog';
 
-    const headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0',
-        'Accept': '*/*',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate, br, zstd',
-        'Origin': mainUrl,
-        'Referer': `${mainUrl}/`,
-        'Connection': 'keep-alive',
-        'Pragma': 'no-cache',
-        'Cache-Control': 'no-cache',
-        'X-Requested-With': 'XMLHttpRequest'
+    const headers = { 'Accept': '*/*', 
+        'X-Requested-With': 'XMLHttpRequest',
+        'Referer': mainUrl, 
+        'User-Agent': 'Mozilla/5.0' 
     };
 
 
