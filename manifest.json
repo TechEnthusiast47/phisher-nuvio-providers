@@ -48,7 +48,7 @@
       "id": "XDMovies",
       "name": "XDMovies",
       "description": "XDMovies Multi-Lang Movies/TVSeries Streaming",
-      "version": "1.0.7",
+      "version": "1.0.8",
       "author": "Phisher",
       "supportedTypes": [
         "movie",
