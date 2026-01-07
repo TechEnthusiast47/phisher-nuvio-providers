@@ -1,8 +1,8 @@
 // Moviesdrive Scraper for Nuvio Local Scrapers
 // React Native compatible version with full original functionality
 
-const cheerio = require('cheerio-without-node-native');
-
+const cheerio = require('cheerio');
+//-without-node-native
 // TMDB API Configuration
 const TMDB_API_KEY = '439c478a771f35c05022f9feabcca01c';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
@@ -207,60 +207,6 @@ function getCurrentDomain() {
     return fetchAndUpdateDomain().then(function () {
         return MAIN_URL;
     });
-}
-
-/**
- * Resolves obfuscated redirector links (e.g., hubdrive.fit/?id=...).
- * This is a direct translation of the `getRedirectLinks` function from `Utils.kt`.
- * @param {string} url The obfuscated URL.
- * @returns {Promise<string>} The resolved direct link.
- */
-function getRedirectLinks(url) {
-    return fetch(url, { headers: HEADERS })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            return response.text();
-        })
-        .then(doc => {
-            const regex = /s\('o','([A-Za-z0-9+/=]+)'|ck\('_wp_http_\d+','([^']+)'/g;
-            let combinedString = '';
-            let match;
-            while ((match = regex.exec(doc)) !== null) {
-                const extractedValue = match[1] || match[2];
-                if (extractedValue) {
-                    combinedString += extractedValue;
-                }
-            }
-
-            if (!combinedString) {
-                console.error("[getRedirectLinks] Could not find encoded strings in page.");
-                return url;
-            }
-
-            const decodedString = atob(rot13(atob(atob(combinedString))));
-            const jsonObject = JSON.parse(decodedString);
-
-            const encodedUrl = atob(jsonObject.o || '').trim();
-            if (encodedUrl) {
-                return encodedUrl;
-            }
-
-            const data = btoa(jsonObject.data || '').trim();
-            const wpHttp = (jsonObject.blog_url || '').trim();
-            if (wpHttp && data) {
-                return fetch(`${wpHttp}?re=${data}`, { headers: HEADERS })
-                    .then(directLinkResponse => directLinkResponse.text())
-                    .then(text => text.trim());
-            }
-
-            return url; // Return original url if logic fails
-        })
-        .catch(e => {
-            console.error(`[getRedirectLinks] Error processing link ${url}:`, e.message);
-            return url; // Fallback to original URL
-        });
 }
 
 // =================================================================================
@@ -953,42 +899,35 @@ function search(query) {
             const searchUrl = `${currentDomain}/?s=${encodeURIComponent(query)}`;
             return fetch(searchUrl, { headers: HEADERS });
         })
-        .then(response => response.text())
-        .then(data => {
-            const $ = cheerio.load(data);
-            return $('.recent-movies > li.thumb').map((i, el) => {
-                const element = $(el);
-                const title = element.find('figcaption:nth-child(2) > a:nth-child(1) > p:nth-child(1)').text().trim();
+        .then(res => res.text())
+        .then(html => {
+            const $ = cheerio.load(html);
 
-                // Extract year from title (look for 4-digit numbers in parentheses or after title)
-                const yearMatch = title.match(/\((\d{4})\)|\b(\d{4})\b/);
-                const year = yearMatch ? parseInt(yearMatch[1] || yearMatch[2]) : null;
+            const results = $('#moviesGridMain > a')
+                .map((_, el) => {
+                    const card = $(el);
 
-                return {
-                    title: title,
-                    url: element.find('figure:nth-child(1) > a:nth-child(2)').attr('href'),
-                    poster: element.find('figure:nth-child(1) > img:nth-child(1)').attr('src'),
-                    year: year
-                };
-            }).get();
+                    const title = card.find('.poster-title').text().trim();
+                    if (!title) return null;
+
+                    const yearMatch = title.match(/\b(19|20)\d{2}\b/);
+                    const year = yearMatch ? Number(yearMatch[0]) : null;
+
+                    return {
+                        title,
+                        url: card.attr('href'),
+                        poster: card.find('img').attr('src') ?? null,
+                        year
+                    };
+                })
+                .get()
+                .filter(Boolean);
+
+            console.log(`[Moviesdrive] Search results: ${results.length}`);
+            return results;
         });
 }
 
-/**
- * Fetches enhanced metadata from Cinemeta API using IMDB ID.
- * Replicates the Cinemeta integration from the Kotlin provider.
- */
-function getCinemetaData(imdbId, tvType) {
-    if (!imdbId) return Promise.resolve(null);
-
-    const cinemetaUrl = `https://v3-cinemeta.strem.io/meta/${tvType}/${imdbId}.json`;
-    return fetch(cinemetaUrl)
-        .then(response => response.json())
-        .catch(e => {
-            console.error(`[Cinemeta] Failed to fetch metadata for ${imdbId}:`, e.message);
-            return null;
-        });
-}
 
 /**
  * Fetches the media page and extracts all hoster links.
@@ -1006,14 +945,12 @@ function getDownloadLinks(mediaUrl, season, episode) {
         .then(data => {
             const $ = cheerio.load(data);
 
-            const typeRaw = $('h1.page-title span').text();
+            const typeRaw = $('.poster-title').text();
             const isMovie = typeRaw.toLowerCase().includes('movie');
 
-            const title = $('figcaption').text();
+            const title = $('.poster-title').first().text().trim();
             const seasonMatch = title.match(/\bSeason\s*(\d+)\b/i);
             const seasonNumber = seasonMatch ? parseInt(seasonMatch[1]) : null;
-
-            let initialLinks = [];
 
             if (isMovie) {
                 const links = $('h5 a')
@@ -1108,7 +1045,11 @@ function getDownloadLinks(mediaUrl, season, episode) {
                     if (seasonPattern.test(text)) {
                         $(el).nextAll('h5').each((_, h5) => {
                             const a = $(h5).find('a[href]');
-                            if (a.length && /single\s*episode/i.test(a.text())) {
+                            if (
+                                a.length &&
+                                /single\s*episode/i.test(a.text()) &&
+                                !/zip/i.test(a.text())
+                            ) {
                                 const href = a.attr('href');
                                 if (href && !seasonPageUrls.includes(href)) {
                                     seasonPageUrls.push(href);
