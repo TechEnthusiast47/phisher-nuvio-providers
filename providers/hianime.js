@@ -1,4 +1,4 @@
-// HiAnime Scraper for Nuvio Local Scrapers
+// HiAnime Scraper for Nuvio Local Scrapers (Hermes-safe)
 
 const cheerio = require('cheerio-without-node-native');
 
@@ -16,7 +16,7 @@ const AJAX_HEADERS = {
     'User-Agent': 'Mozilla/5.0'
 };
 
-// ================= Megacloud Extractor =================
+// ================= MEGACLOUD =================
 
 function extractMegacloud(embedUrl, effectiveType) {
     const mainUrl = 'https://megacloud.blog';
@@ -36,9 +36,7 @@ function extractMegacloud(embedUrl, effectiveType) {
             let nonce =
                 page.match(/\b[a-zA-Z0-9]{48}\b/)?.[0] ??
                 (() => {
-                    const m = page.match(
-                        /\b([a-zA-Z0-9]{16})\b.*?\b([a-zA-Z0-9]{16})\b.*?\b([a-zA-Z0-9]{16})\b/
-                    );
+                    const m = page.match(/\b([a-zA-Z0-9]{16})\b.*?\b([a-zA-Z0-9]{16})\b.*?\b([a-zA-Z0-9]{16})\b/);
                     return m ? m[1] + m[2] + m[3] : null;
                 })();
 
@@ -52,19 +50,16 @@ function extractMegacloud(embedUrl, effectiveType) {
                 .then(json => {
                     if (!json?.sources?.length) return [];
 
-                    const encoded = json.sources[0].file;
-
-                    const buildResult = m3u8 => [{
-                        url: m3u8,
+                    const build = url => [{
+                        url,
                         type: effectiveType,
                         subtitles: (json.tracks || [])
                             .filter(t => t.kind === 'captions' || t.kind === 'subtitles')
                             .map(t => ({ label: t.label, url: t.file }))
                     }];
 
-                    if (encoded.includes('.m3u8')) {
-                        return buildResult(encoded);
-                    }
+                    const encoded = json.sources[0].file;
+                    if (encoded.includes('.m3u8')) return build(encoded);
 
                     return fetch(
                         'https://raw.githubusercontent.com/yogesh-hacker/MegacloudKeys/refs/heads/main/keys.json'
@@ -86,7 +81,7 @@ function extractMegacloud(embedUrl, effectiveType) {
                                 .then(r => r.ok ? r.text() : null)
                                 .then(txt => {
                                     const m3u8 = txt?.match(/"file":"(.*?)"/)?.[1];
-                                    return m3u8 ? buildResult(m3u8) : [];
+                                    return m3u8 ? build(m3u8) : [];
                                 });
                         });
                 });
@@ -94,233 +89,158 @@ function extractMegacloud(embedUrl, effectiveType) {
         .catch(() => []);
 }
 
-// ================= TMDB CONFIG =================
+// ================= TMDB =================
 
 const TMDB_API_KEY = '439c478a771f35c05022f9feabcca01c';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
-// ================= HELPERS =================
-
-function fetchJsonWithTimeout(url, headers, timeoutMs = 10000) {
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), timeoutMs);
-
-    return fetch(url, { headers, signal: controller.signal })
-        .then(r => r.ok ? r.json() : null)
-        .catch(() => null)
-        .finally(() => clearTimeout(t));
+function tmdbFetch(path) {
+    return fetch(`${TMDB_BASE_URL}${path}?api_key=${TMDB_API_KEY}`)
+        .then(r => r.ok ? r.json() : null);
 }
 
-function tmdbFetch(path) {
-    const url = `${TMDB_BASE_URL}${path}?api_key=${TMDB_API_KEY}`;
-    return fetch(url, {
-        headers: {
-            'Accept': 'application/json',
-            'User-Agent': 'Mozilla/5.0'
-        }
-    }).then(r => {
-        if (!r.ok) throw new Error(`TMDB ${r.status}`);
-        return r.json();
+function getTMDBDetails(tmdbId, type) {
+    return tmdbFetch(`/${type}/${tmdbId}`).then(d => {
+        if (!d) return null;
+        return type === 'movie'
+            ? {
+                title: d.title,
+                releaseDate: d.release_date,
+                firstAirDate: null
+            }
+            : {
+                title: d.name,
+                releaseDate: d.first_air_date,
+                firstAirDate: d.first_air_date
+            };
     });
 }
 
-function getTMDBDetails(tmdbId, mediaType) {
-    if (mediaType === 'movie') {
-        return tmdbFetch(`/movie/${tmdbId}`).then(d => ({
-            title: d.title,
-            releaseDate: d.release_date ?? null,
-            firstAirDate: null,
-            year: d.release_date ? Number(d.release_date.split('-')[0]) : null
-        }));
-    }
-
-    return tmdbFetch(`/tv/${tmdbId}`).then(d => ({
-        title: d.name,
-        releaseDate: d.first_air_date ?? null,
-        firstAirDate: d.first_air_date ?? null,
-        year: d.first_air_date ? Number(d.first_air_date.split('-')[0]) : null
-    }));
-}
-
-function getTMDBSeasonAirDate(tmdbId, seasonNumber) {
-    return tmdbFetch(`/tv/${tmdbId}/season/${seasonNumber}`)
-        .then(d => d.air_date ?? null)
-        .catch(() => null);
+function getTMDBSeasonAirDate(tmdbId, season) {
+    return tmdbFetch(`/tv/${tmdbId}/season/${season}`)
+        .then(d => d?.air_date ?? null);
 }
 
 // ================= ANILIST / MAL =================
 
 const ANILIST_API = 'https://graphql.anilist.co';
 
-function getHiAnimeIdFromMalSync(malId) {
-    return fetch(`https://api.malsync.moe/mal/anime/${malId}`)
-        .then(r => r.ok ? r.json() : null)
-        .then(json => {
-            const zoro = json?.Sites?.Zoro;
-            if (!zoro) return null;
-            const entry = Object.values(zoro)[0];
-            return entry?.identifier ?? null;
-        })
-        .catch(() => null);
-}
-
-// ================= ANILIST LOOKUP =================
-
 function tmdbToAnimeId(title, year) {
-    if (!title || !year) return Promise.resolve({ id: null, idMal: null });
-
-    const query = `
-        query ($search: String, $seasonYear: Int) {
-          Page(perPage: 5) {
-            media(
-              search: $search
-              seasonYear: $seasonYear
-              type: ANIME
-              format_in: [TV, ONA, MOVIE]
-            ) {
-              id
-              idMal
-            }
-          }
-        }
-    `;
+    if (!title || !year) return Promise.resolve({ idMal: null });
 
     return fetch(ANILIST_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            query,
+            query: `
+            query ($search: String, $seasonYear: Int) {
+              Page(perPage: 5) {
+                media(search: $search, seasonYear: $seasonYear, type: ANIME) {
+                  idMal
+                }
+              }
+            }`,
             variables: { search: title, seasonYear: year }
         })
     })
         .then(r => r.ok ? r.json() : null)
+        .then(j => ({ idMal: j?.data?.Page?.media?.[0]?.idMal ?? null }))
+        .catch(() => ({ idMal: null }));
+}
+
+function getHiAnimeIdFromMalSync(malId) {
+    return fetch(`https://api.malsync.moe/mal/anime/${malId}`)
+        .then(r => r.ok ? r.json() : null)
         .then(j => {
-            const m = j?.data?.Page?.media?.[0];
-            return { id: m?.id ?? null, idMal: m?.idMal ?? null };
+            const z = j?.Sites?.Zoro;
+            return z ? Object.values(z)[0]?.identifier ?? null : null;
         })
-        .catch(() => ({ id: null, idMal: null }));
+        .catch(() => null);
 }
 
-function convertTmdbToAnimeId(title, date, airedDate) {
-    const primaryYear = date ? Number(date.split('-')[0]) : null;
-    const airedYear = airedDate ? Number(airedDate.split('-')[0]) : null;
-
-    return tmdbToAnimeId(title, primaryYear).then(ids => {
-        if (!ids.id && airedYear && airedYear !== primaryYear) {
-            return tmdbToAnimeId(title, airedYear);
-        }
-        return ids;
-    });
-}
-
-// ================= Main Logic =================
+// ================= MAIN =================
 
 function getStreams(tmdbId, mediaType = 'movie', season = null, episode = null) {
     return getTMDBDetails(tmdbId, mediaType)
-        .then(mediaInfo => {
-            const seasonPromise =
-                mediaType === 'tv' && season && season > 1
+        .then(info => {
+            if (!info) return [];
+
+            const aired =
+                mediaType === 'tv' && season > 1
                     ? getTMDBSeasonAirDate(tmdbId, season)
-                    : Promise.resolve(mediaInfo.firstAirDate);
+                    : Promise.resolve(info.firstAirDate);
 
-            return seasonPromise.then(airedDate => ({ mediaInfo, airedDate }));
+            return aired.then(airedDate => ({ info, airedDate }));
         })
-        .then(({ mediaInfo, airedDate }) => {
-            const title =
-                mediaType === 'tv' && season
-                    ? `${mediaInfo.title} Season ${season}`
-                    : mediaInfo.title;
-
-            return convertTmdbToAnimeId(
-                title,
-                mediaType === 'tv' ? airedDate : mediaInfo.releaseDate,
-                airedDate
-            ).then(ids => ({ mediaInfo, airedDate, ids }));
+        .then(({ info, airedDate }) => {
+            const year = (airedDate || info.releaseDate)?.split('-')?.[0];
+            return tmdbToAnimeId(info.title, Number(year))
+                .then(ids => ({ info, ids }));
         })
-        .then(({ mediaInfo, airedDate, ids }) => {
+        .then(({ info, ids }) => {
             if (!ids.idMal) return [];
 
-            return getHiAnimeIdFromMalSync(ids.idMal).then(hiAnimeId => {
-                if (!hiAnimeId) return [];
+            return getHiAnimeIdFromMalSync(ids.idMal).then(hiId => {
+                if (!hiId) return [];
 
-                const episodeNumber = String(episode ?? 1);
+                const epNum = String(episode ?? 1);
                 const apis = [...HIANIME_APIS].sort(() => Math.random() - 0.5);
-
                 let chain = Promise.resolve([]);
 
                 apis.forEach(api => {
-                    chain = chain.then(result => {
-                        if (result.length) return result;
+                    chain = chain.then(res => {
+                        if (res.length) return res;
 
-                        return fetchJsonWithTimeout(
-                            `${api}/ajax/v2/episode/list/${hiAnimeId}`,
-                            AJAX_HEADERS
-                        )
-                            .then(listRes => {
-                                if (!listRes?.html) return [];
+                        return fetch(`${api}/ajax/v2/episode/list/${hiId}`, { headers: AJAX_HEADERS })
+                            .then(r => r.ok ? r.json() : null)
+                            .then(list => {
+                                if (!list?.html) return [];
 
-                                const $ = cheerio.load(listRes.html);
-                                const episodeId = $('div.ss-list a')
-                                    .filter((_, el) => $(el).attr('data-number') === episodeNumber)
-                                    .first()
+                                const $ = cheerio.load(list.html);
+                                const epId = $('a[data-number]')
+                                    .filter((_, e) => $(e).attr('data-number') === epNum)
                                     .attr('data-id');
 
-                                if (!episodeId) return [];
+                                if (!epId) return [];
 
-                                return fetchJsonWithTimeout(
-                                    `${api}/ajax/v2/episode/servers?episodeId=${episodeId}`,
-                                    AJAX_HEADERS
-                                ).then(serversRes => {
-                                    if (!serversRes?.html) return [];
+                                return fetch(`${api}/ajax/v2/episode/servers?episodeId=${epId}`, { headers: AJAX_HEADERS })
+                                    .then(r => r.ok ? r.json() : null)
+                                    .then(srv => {
+                                        if (!srv?.html) return [];
 
-                                    const $$ = cheerio.load(serversRes.html);
-                                    const servers = $$('div.item.server-item').map((_, el) => ({
-                                        label: $$(el).text().trim(),
-                                        serverId: $$(el).attr('data-id'),
-                                        effectiveType:
-                                            $$(el).attr('data-type') === 'raw'
-                                                ? 'SUB'
-                                                : $$(el).attr('data-type')?.toUpperCase()
-                                    })).get();
+                                        const $$ = cheerio.load(srv.html);
+                                        const servers = $$('div.server-item').map((_, e) => ({
+                                            label: $$(e).text().trim(),
+                                            id: $$(e).attr('data-id'),
+                                            type: ($$(e).attr('data-type') === 'raw' ? 'SUB' : 'DUB')
+                                        })).get();
 
-                                    let streams = [];
-                                    let serverChain = Promise.resolve();
+                                        let out = [];
+                                        let sChain = Promise.resolve();
 
-                                    servers.forEach(server => {
-                                        serverChain = serverChain.then(() => {
-                                            if (!server.serverId) return;
-
-                                            return fetchJsonWithTimeout(
-                                                `${api}/ajax/v2/episode/sources?id=${server.serverId}`,
-                                                AJAX_HEADERS
-                                            ).then(src => {
-                                                const embedUrl = src?.link;
-                                                if (!embedUrl || !embedUrl.includes('megacloud')) return;
-
-                                                return extractMegacloud(embedUrl, server.effectiveType)
-                                                    .then(extracted => {
-                                                        extracted.forEach(s => {
-                                                            streams.push({
-                                                                name: `⌜ HiAnime ⌟ | ${server.label.toUpperCase()} | ${s.type}`,
-                                                                title:
-                                                                    mediaType === 'tv'
-                                                                        ? `${mediaInfo.title} S${String(season).padStart(2, '0')}E${String(episodeNumber).padStart(2, '0')}`
-                                                                        : mediaInfo.title,
-                                                                url: s.url,
-                                                                quality: '1080p',
-                                                                provider: 'HiAnime',
-                                                                malId: ids.idMal,
-                                                                type: s.type,
-                                                                subtitles: s.subtitles
-                                                            });
-                                                        });
-                                                    });
-                                            });
+                                        servers.forEach(s => {
+                                            sChain = sChain.then(() =>
+                                                fetch(`${api}/ajax/v2/episode/sources?id=${s.id}`, { headers: AJAX_HEADERS })
+                                                    .then(r => r.ok ? r.json() : null)
+                                                    .then(src => {
+                                                        if (!src?.link || !src.link.includes('megacloud')) return;
+                                                        return extractMegacloud(src.link, s.type)
+                                                            .then(xs => xs.forEach(x =>
+                                                                out.push({
+                                                                    name: `⌜ HiAnime ⌟ | ${s.label}`,
+                                                                    title: info.title,
+                                                                    url: x.url,
+                                                                    quality: '1080p',
+                                                                    provider: 'HiAnime',
+                                                                    subtitles: x.subtitles
+                                                                })
+                                                            ));
+                                                    })
+                                            );
                                         });
-                                    });
 
-                                    return serverChain.then(() => streams);
-                                });
+                                        return sChain.then(() => out);
+                                    });
                             });
                     });
                 });
