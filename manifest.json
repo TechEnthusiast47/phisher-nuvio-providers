@@ -1,6 +1,6 @@
 {
   "name": "Phisher's Repo",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "scrapers": [
     {
       "id": "MoviesDrive",
@@ -27,7 +27,7 @@
       "id": "HiAnime",
       "name": "HiAnime",
       "description": "HiAnime Anime Streaming",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "Phisher",
       "supportedTypes": [
         "movie",
