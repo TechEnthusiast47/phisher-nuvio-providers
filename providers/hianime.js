@@ -22,11 +22,18 @@ function extractMegacloud(embedUrl, effectiveType) {
     const mainUrl = 'https://megacloud.blog';
 
     const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0',
         'Accept': '*/*',
-        'X-Requested-With': 'XMLHttpRequest',
-        'Referer': mainUrl,
-        'User-Agent': 'Mozilla/5.0'
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br, zstd',
+        'Origin': mainUrl,
+        'Referer': `${mainUrl}/`,
+        'Connection': 'keep-alive',
+        'Pragma': 'no-cache',
+        'Cache-Control': 'no-cache',
+        'X-Requested-With': 'XMLHttpRequest'
     };
+
 
     return fetch(embedUrl, { headers })
         .then(r => r.ok ? r.text() : null)
@@ -209,35 +216,66 @@ function getStreams(tmdbId, mediaType = 'movie', season = null, episode = null) 
                                         if (!srv?.html) return [];
 
                                         const $$ = cheerio.load(srv.html);
-                                        const servers = $$('div.server-item').map((_, e) => ({
-                                            label: $$(e).text().trim(),
-                                            id: $$(e).attr('data-id'),
-                                            type: ($$(e).attr('data-type') === 'raw' ? 'SUB' : 'DUB')
-                                        })).get();
+                                        const servers = $$('div.server-item').map((_, e) => {
+                                            const t = $$(e).attr('data-type');
+
+                                            let effectiveType;
+                                            if (t === 'raw') effectiveType = 'RAW';
+                                            else if (t === 'sub') effectiveType = 'SUB';
+                                            else if (t === 'dub') effectiveType = 'DUB';
+                                            else effectiveType = 'UNKNOWN';
+
+                                            return {
+                                                label: $$(e).text().trim(),
+                                                id: $$(e).attr('data-id'),
+                                                type: effectiveType
+                                            };
+                                        }).get();
 
                                         let out = [];
                                         let sChain = Promise.resolve();
 
                                         servers.forEach(s => {
-                                            sChain = sChain.then(() =>
-                                                fetch(`${api}/ajax/v2/episode/sources?id=${s.id}`, { headers: AJAX_HEADERS })
+                                            sChain = sChain.then(() => {
+                                                console.log('[HiAnime] Server:', {
+                                                    label: s.label,
+                                                    id: s.id,
+                                                    type: s.type
+                                                });
+
+                                                return fetch(`${api}/ajax/v2/episode/sources?id=${s.id}`, {
+                                                    headers: AJAX_HEADERS
+                                                })
                                                     .then(r => r.ok ? r.json() : null)
                                                     .then(src => {
-                                                        if (!src?.link || !src.link.includes('megacloud')) return;
+
+                                                        if (!src?.link) {
+                                                            console.log('[HiAnime] No embed link for server', s.label);
+                                                            return;
+                                                        }
+
+                                                        if (!src.link.includes('megacloud')) {
+                                                            console.log('[HiAnime] Skipping non-megacloud server:', src.link);
+                                                            return;
+                                                        }
+
                                                         return extractMegacloud(src.link, s.type)
-                                                            .then(xs => xs.forEach(x =>
-                                                                out.push({
-                                                                    name: `⌜ HiAnime ⌟ | ${s.label} | ${s.type}`,
-                                                                    title: info.title,
-                                                                    url: x.url,
-                                                                    quality: '1080p',
-                                                                    provider: 'HiAnime',
-                                                                    subtitles: x.subtitles
-                                                                })
-                                                            ));
-                                                    })
-                                            );
+                                                            .then(xs => {
+                                                                xs.forEach(x => {
+                                                                    out.push({
+                                                                        name: `⌜ HiAnime ⌟ | ${s.label} | ${s.type}`,
+                                                                        title: info.title,
+                                                                        url: x.url,
+                                                                        quality: '1080p',
+                                                                        provider: 'HiAnime',
+                                                                        subtitles: x.subtitles
+                                                                    });
+                                                                });
+                                                            });
+                                                    });
+                                            });
                                         });
+
 
                                         return sChain.then(() => out);
                                     });
