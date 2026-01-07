@@ -1,6 +1,6 @@
 // HiAnime Scraper for Nuvio Local Scrapers (Hermes-safe)
 
-const cheerio = require('cheerio-without-node-native');
+const cheerio = require('cheerio');
 
 const HIANIME_APIS = [
     "https://hianimez.is",
@@ -15,6 +15,16 @@ const AJAX_HEADERS = {
     'Referer': 'https://hianime.to/',
     'User-Agent': 'Mozilla/5.0'
 };
+
+const megaHeaders = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0',
+    'Accept': '*/*',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Origin': 'https://megacloud.blog',
+    'Referer': 'https://megacloud.blog/',
+    'Connection': 'keep-alive'
+};
+
 
 // ================= MEGACLOUD =================
 
@@ -268,6 +278,7 @@ function getStreams(tmdbId, mediaType = 'movie', season = null, episode = null) 
                                                                         url: x.url,
                                                                         quality: '1080p',
                                                                         provider: 'HiAnime',
+                                                                        headers: megaHeaders,
                                                                         subtitles: x.subtitles
                                                                     });
                                                                 });
