@@ -625,6 +625,22 @@ function extractCodec(text) {
     return m ? m[0].toUpperCase() : '';
 }
 
+const resolveRedirect = async (url) => {
+    if (!url) return null;
+
+    try {
+        const res = await fetch(url, {
+            headers: XDMOVIES_HEADERS,
+            redirect: 'follow'
+        });
+
+        // FINAL redirected URL
+        return res.url || url;
+    } catch {
+        return null;
+    }
+};
+
 
 // ================= MAIN =================
 
@@ -656,33 +672,13 @@ function getStreams(tmdbId, mediaType = 'movie', season = null, episode = null) 
                             const $ = cheerio.load(html);
                             const collectedUrls = [];
 
-                            // ✅ FIXED: redirect follows + returns final URL
-                            const resolveRedirect = (url) => {
-                                if (!url || !url.startsWith('https://link.xdmovies.site/')) {
-                                    return Promise.resolve(url);
-                                }
-
-                                return fetch(url, {
-                                    headers: XDMOVIES_HEADERS,
-                                    redirect: 'follow'
-                                })
-                                    .then(res => res.url || url)
-                                    .catch(() => null);
-                            };
-
                             // ===== MOVIE =====
                             if (!season) {
-                                const rawLinks = $('div.download-item a[href]')
-                                    .map((_, a) => $(a).attr('href'))
-                                    .get();
-
-                                return Promise.all(
-                                    rawLinks.map(raw =>
-                                        resolveRedirect(raw).then(finalUrl => {
-                                            if (finalUrl) collectedUrls.push(finalUrl);
-                                        })
-                                    )
-                                ).then(() => collectedUrls);
+                                $('div.download-item a[href]').each((_, a) => {
+                                    const href = $(a).attr('href');
+                                    if (href) collectedUrls.push(href);
+                                });
+                                return collectedUrls;
                             }
 
                             // ===== TV =====
@@ -691,79 +687,94 @@ function getStreams(tmdbId, mediaType = 'movie', season = null, episode = null) 
                                 'i'
                             );
 
-                            const jobs = [];
-
                             $('div.episode-card').each((_, card) => {
-                                const $card = $(card);
-                                const title = $card.find('.episode-title').text() || '';
+                                const title = $(card).find('.episode-title').text() || '';
                                 if (!epRegex.test(title)) return;
 
-                                $card.find('a[href]').each((_, a) => {
-                                    const raw = $(a).attr('href');
-                                    if (!raw) return;
-
-                                    jobs.push(
-                                        resolveRedirect(raw).then(finalUrl => {
-                                            if (finalUrl) collectedUrls.push(finalUrl);
-                                        })
-                                    );
+                                $(card).find('a[href]').each((_, a) => {
+                                    const href = $(a).attr('href');
+                                    if (href) collectedUrls.push(href);
                                 });
                             });
 
-                            return Promise.all(jobs).then(() => collectedUrls);
+                            return collectedUrls;
                         })
                         .then(collectedUrls => {
                             if (!collectedUrls.length) return [];
 
                             // ---------- EXTRACTION ----------
                             return Promise.all(
-                                collectedUrls.map(url =>
-                                    loadExtractor(url, XDMOVIES_API)
-                                        .catch(() => [])
-                                )
-                            ).then(results => {
-                                const flat = results.flat();
+                                collectedUrls.map(async rawUrl => {
+                                    const finalUrl = await resolveRedirect(rawUrl);
+                                    if (!finalUrl) return [];
+                                    return loadExtractor(finalUrl, XDMOVIES_API).catch(() => []);
+                                })
+                            );
 
-                                // Deduplicate FINAL streams only
-                                const seen = new Set();
+                        })
+                        .then(results => {
+                            const flat = results.flat();
+                            const seen = new Set();
 
-                                return flat.filter(link => {
+                            const streams = flat
+                                .filter(link => {
                                     if (!link || !link.url) return false;
                                     if (seen.has(link.url)) return false;
                                     seen.add(link.url);
                                     return true;
-                                }).map(link => {
-                                    let title;
-                                    if (mediaType === 'tv') {
-                                        title =
+                                })
+                                .map(link => {
+                                    let mediaTitle;
+                                    if (mediaType === 'tv' && season && episode) {
+                                        mediaTitle =
                                             `${mediaInfo.title} ` +
                                             `S${String(season).padStart(2, '0')}` +
                                             `E${String(episode).padStart(2, '0')}`;
                                     } else if (mediaInfo.year) {
-                                        title = `${mediaInfo.title} (${mediaInfo.year})`;
+                                        mediaTitle = `${mediaInfo.title} (${mediaInfo.year})`;
                                     } else {
-                                        title = mediaInfo.title;
+                                        mediaTitle = mediaInfo.title;
                                     }
 
-                                    let quality = 'Unknown';
-                                    if (link.quality >= 2160) quality = '2160p';
-                                    else if (link.quality >= 1440) quality = '1440p';
-                                    else if (link.quality >= 1080) quality = '1080p';
-                                    else if (link.quality >= 720) quality = '720p';
-                                    else if (link.quality >= 480) quality = '480p';
-                                    else if (link.quality >= 360) quality = '360p';
+                                    // Quality normalization (APP-SAFE)
+                                    let qualityStr = 'Unknown';
+                                    if (link.quality >= 2160) qualityStr = '2160p';
+                                    else if (link.quality >= 1440) qualityStr = '1440p';
+                                    else if (link.quality >= 1080) qualityStr = '1080p';
+                                    else if (link.quality >= 720) qualityStr = '720p';
+                                    else if (link.quality >= 480) qualityStr = '480p';
+                                    else if (link.quality >= 360) qualityStr = '360p';
+                                    else qualityStr = '240p';
 
                                     return {
                                         name: `XDmovies ${extractServerName(link.source)}`,
-                                        title,
+                                        title: mediaTitle,
                                         url: link.url,
-                                        quality,
+                                        quality: qualityStr,
                                         size: formatBytes(link.size),
-                                        headers: link.headers,
+                                        headers: HEADERS,
                                         provider: 'XDmovies'
                                     };
                                 });
-                            });
+
+                            // Sort by quality (highest first)
+                            const qualityOrder = {
+                                '2160p': 5,
+                                '1440p': 4,
+                                '1080p': 3,
+                                '720p': 2,
+                                '480p': 1,
+                                '360p': 0,
+                                '240p': -1,
+                                'Unknown': -2
+                            };
+
+                            streams.sort((a, b) =>
+                                (qualityOrder[b.quality] ?? -3) -
+                                (qualityOrder[a.quality] ?? -3)
+                            );
+
+                            return streams;
                         });
                 });
         })
