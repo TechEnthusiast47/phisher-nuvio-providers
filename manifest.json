@@ -7,7 +7,7 @@
       "name": "MoviesDrive",
       "description": "MoviesDrive streaming with multiple quality options and versions",
       "version": "1.0.0",
-      "author": "Nuvio Team",
+      "author": "Phisher",
       "supportedTypes": [
         "movie",
         "tv"
@@ -19,6 +19,27 @@
         "mkv"
       ],
       "logo": "https://i.imgur.com/9bGkGMi.png",
+      "contentLanguage": [
+        "en"
+      ]
+    },
+    {
+      "id": "HiAnime",
+      "name": "HiAnime",
+      "description": "HiAnime Anime Streaming",
+      "version": "1.0.0",
+      "author": "Phisher",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/hianime.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "mkv"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=hianime.to&sz=%size%",
       "contentLanguage": [
         "en"
       ]
