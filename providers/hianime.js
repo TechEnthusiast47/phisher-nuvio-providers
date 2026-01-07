@@ -1,6 +1,6 @@
 // HiAnime Scraper for Nuvio Local Scrapers
 
-const cheerio = require('cheerio');
+const cheerio = require('cheerio-without-node-native');
 
 const HIANIME_APIS = [
     "https://hianimez.is",
@@ -352,7 +352,7 @@ function getStreams(tmdbId, mediaType = 'movie', season = null, episode = null) 
                                             ? `${mediaInfo.title} S${String(season).padStart(2, '0')}E${String(episodeNumber).padStart(2, '0')}`
                                             : mediaInfo.title,
                                     url: stream.url,
-                                    quality: 'Auto',
+                                    quality: '1080p',
                                     provider: 'HiAnime',
                                     malId: idMal,
                                     type: stream.type,
