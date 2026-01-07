@@ -1,5 +1,5 @@
 // ================= XDmovies =================
-const cheerio = require('cheerio-without-node-native');
+const cheerio = require('cheerio');
 
 //-without-node-native
 const XDMOVIES_API = "https://xdmovies.site";
@@ -110,7 +110,7 @@ function extractServerName(source) {
  * Extract direct download link from Pixeldrain.
  * Pixeldrain direct link format: https://pixeldrain.com/api/file/{id}?download
  */
-function pixelDrainExtractor(link,quality) {
+function pixelDrainExtractor(link, quality) {
     return Promise.resolve().then(() => {
         let fileId;
         // link can be pixeldrain.com/u/{id} or pixeldrain.dev/... or pixeldrain.xyz/...
@@ -452,7 +452,7 @@ function hubCloudExtractor(url, referer) {
                 }
 
                 if (link.includes("pixeldra")) {
-                    return pixelDrainExtractor(link,quality)
+                    return pixelDrainExtractor(link, quality)
                         .then(extracted => {
                             links.push(...extracted.map(l => ({
                                 ...l,
@@ -655,8 +655,13 @@ function getStreams(tmdbId, mediaType = 'movie', season = null, episode = null) 
                             const $ = cheerio.load(html);
                             const collectedUrls = [];
 
-                            const resolveRedirect = (url) =>
-                                fetch(url, {
+                            const resolveRedirect = (url) => {
+                                // ✅ Only redirect for xdmovies link shortener
+                                if (!url || !url.startsWith('https://link.xdmovies.site/')) {
+                                    return Promise.resolve(url);
+                                }
+
+                                return fetch(url, {
                                     headers: XDMOVIES_HEADERS,
                                     redirect: 'manual'
                                 })
@@ -668,6 +673,8 @@ function getStreams(tmdbId, mediaType = 'movie', season = null, episode = null) 
                                         return url;
                                     })
                                     .catch(() => null);
+                            };
+
 
                             // ===== MOVIE =====
                             if (!season) {
