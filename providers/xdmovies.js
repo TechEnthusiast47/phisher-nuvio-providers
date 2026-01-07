@@ -104,6 +104,51 @@ function extractServerName(source) {
 }
 
 
+const resolveRedirect = async (url, maxHops = 5) => {
+    if (!url) return null;
+
+    let current = url;
+
+    for (let i = 0; i < maxHops; i++) {
+        // Stop once we are outside xdmovies shortener
+        if (!current.startsWith('https://link.xdmovies.site/')) {
+            return current;
+        }
+
+        try {
+            const res = await fetch(current, {
+                headers: XDMOVIES_HEADERS,
+                redirect: 'manual'
+            });
+
+            // Handle HTTP redirects
+            if (res.status >= 300 && res.status < 400) {
+                const loc = res.headers.get('location');
+                if (!loc) return current;
+
+                // Handle ?link= encoded redirects
+                if (loc.includes('link=')) {
+                    const decoded = decodeURIComponent(loc.split('link=')[1]);
+                    return decoded;
+                }
+
+                current = new URL(loc, current).toString();
+                continue;
+            }
+
+            // No redirect → final
+            return current;
+        } catch (e) {
+            return current;
+        }
+    }
+
+    // Fallback after max hops
+    return current;
+};
+
+
+
 
 // Extractors
 /**
@@ -654,27 +699,6 @@ function getStreams(tmdbId, mediaType = 'movie', season = null, episode = null) 
                         .then(html => {
                             const $ = cheerio.load(html);
                             const collectedUrls = [];
-
-                            const resolveRedirect = (url) => {
-                                // ✅ Only redirect for xdmovies link shortener
-                                if (!url || !url.startsWith('https://link.xdmovies.site/')) {
-                                    return Promise.resolve(url);
-                                }
-
-                                return fetch(url, {
-                                    headers: XDMOVIES_HEADERS,
-                                    redirect: 'manual'
-                                })
-                                    .then(res => {
-                                        if (res.status >= 300 && res.status < 400) {
-                                            const loc = res.headers.get('location');
-                                            return loc ? new URL(loc, url).toString() : null;
-                                        }
-                                        return url;
-                                    })
-                                    .catch(() => null);
-                            };
-
 
                             // ===== MOVIE =====
                             if (!season) {
