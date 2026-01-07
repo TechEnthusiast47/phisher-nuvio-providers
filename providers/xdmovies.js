@@ -656,26 +656,19 @@ function getStreams(tmdbId, mediaType = 'movie', season = null, episode = null) 
                             const $ = cheerio.load(html);
                             const collectedUrls = [];
 
+                            // ✅ FIXED: redirect follows + returns final URL
                             const resolveRedirect = (url) => {
-                                // ✅ Only redirect for xdmovies link shortener
                                 if (!url || !url.startsWith('https://link.xdmovies.site/')) {
                                     return Promise.resolve(url);
                                 }
 
                                 return fetch(url, {
                                     headers: XDMOVIES_HEADERS,
-                                    redirect: 'manual'
+                                    redirect: 'follow'
                                 })
-                                    .then(res => {
-                                        if (res.status >= 300 && res.status < 400) {
-                                            const loc = res.headers.get('location');
-                                            return loc;
-                                        }
-                                        return url;
-                                    })
+                                    .then(res => res.url || url)
                                     .catch(() => null);
                             };
-
 
                             // ===== MOVIE =====
                             if (!season) {
@@ -779,6 +772,7 @@ function getStreams(tmdbId, mediaType = 'movie', season = null, episode = null) 
             return [];
         });
 }
+
 
 
 // ================= EXPORT =================
