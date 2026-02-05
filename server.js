@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const url = require('url');
 
 const PORT = 3000;
 
@@ -40,8 +41,63 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    // Prepare file path
-    let filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url);
+    // Parse URL for API routes
+    const parsedUrl = url.parse(req.url, true);
+    const pathname = parsedUrl.pathname;
+
+    // Nouvelle route API : /api/getStreams
+    if (pathname === '/api/getStreams') {
+        const query = parsedUrl.query;
+        const providerId = query.provider;
+        const tmdbId = query.tmdbId;
+        const mediaType = query.mediaType || 'movie';
+        const season = parseInt(query.season) || null;
+        const episode = parseInt(query.episode) || null;
+
+        // Vérifie params obligatoires
+        if (!providerId || !tmdbId) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Missing parameters: provider and tmdbId are required' }));
+            return;
+        }
+
+        // Charge manifest.json pour trouver le provider
+        try {
+            const manifestPath = path.join(__dirname, 'manifest.json');
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            const scraper = manifest.scrapers.find(s => s.id === providerId);
+
+            if (!scraper) {
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Provider not found' }));
+                return;
+            }
+
+            // Charge dynamiquement le provider JS
+            const providerPath = path.join(__dirname, scraper.filename);
+            const providerModule = require(providerPath);
+
+            // Appelle getStreams
+            providerModule.getStreams(tmdbId, mediaType, season, episode)
+                .then(streams => {
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify(streams));
+                })
+                .catch(err => {
+                    console.error('Error in getStreams:', err);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Internal server error' }));
+                });
+        } catch (err) {
+            console.error('Error loading manifest or provider:', err);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Internal server error' }));
+        }
+        return;
+    }
+
+    // Logique originale pour serving files
+    let filePath = path.join(__dirname, pathname === '/' ? 'index.html' : pathname);
 
     // Security check: prevent directory traversal
     if (!filePath.startsWith(__dirname)) {
@@ -58,12 +114,11 @@ const server = http.createServer((req, res) => {
         contentType = "video/mp4"; // Defaulting to mp4 for video files for simplicity
     }
 
-
     fs.readFile(filePath, (err, content) => {
         if (err) {
             if (err.code === 'ENOENT') {
                 // If asking for root and index.html doesn't exist, allow checking specific files
-                if (req.url === '/') {
+                if (pathname === '/') {
                     res.writeHead(200, { 'Content-Type': 'text/plain' });
                     res.end('Nuvio Providers Server Running. Access /manifest.json to see the manifest.');
                     return;
