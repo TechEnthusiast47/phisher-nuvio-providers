@@ -27,10 +27,9 @@ const mimeTypes = {
     '.html': 'text/html',
 };
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
     console.log(`${req.method} ${req.url}`);
 
-    // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -44,14 +43,13 @@ const server = http.createServer((req, res) => {
     const parsedUrl = url.parse(req.url, true);
     const pathname = parsedUrl.pathname;
 
-    // Route API : /api/getStreams (globale ou ciblée)
     if (pathname === '/api/getStreams') {
         const query = parsedUrl.query;
         const tmdbId = query.tmdbId;
         const mediaType = query.mediaType || 'movie';
         const season = parseInt(query.season) || null;
         const episode = parseInt(query.episode) || null;
-        const specificProvider = query.provider; // optionnel
+        const specificProvider = query.provider;
 
         if (!tmdbId) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -65,7 +63,6 @@ const server = http.createServer((req, res) => {
 
             const allResults = [];
 
-            // Si provider spécifique demandé → filtre
             const scrapersToRun = specificProvider 
                 ? manifest.scrapers.filter(s => s.id === specificProvider && s.enabled)
                 : manifest.scrapers.filter(s => s.enabled);
@@ -86,7 +83,7 @@ const server = http.createServer((req, res) => {
                 }
             }
 
-            // Dédoublonnage par URL + tri par qualité
+            // Dédoublonnage par URL
             const uniqueStreams = [];
             const seenUrls = new Set();
 
@@ -97,7 +94,7 @@ const server = http.createServer((req, res) => {
                 }
             });
 
-            // Tri qualité (meilleur d'abord)
+            // Tri par qualité
             const qualOrder = { '2160p': 5, '1440p': 4, '1080p': 3, '720p': 2, '480p': 1, 'Unknown': 0 };
             uniqueStreams.sort((a, b) => (qualOrder[b.quality] || 0) - (qualOrder[a.quality] || 0));
 
@@ -111,7 +108,7 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    // Logique originale pour servir fichiers (manifest, logos, etc.)
+    // Servir fichiers statiques
     let filePath = path.join(__dirname, pathname === '/' ? 'index.html' : pathname);
 
     if (!filePath.startsWith(__dirname)) {
