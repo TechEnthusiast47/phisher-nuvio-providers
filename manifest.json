@@ -1,19 +1,27 @@
 {
-  "name": "Phisher's Nuvio Providers",
+  "name": "Phisher's Repo",
   "version": "1.0.0",
   "scrapers": [
     {
       "id": "MoviesDrive",
       "name": "MoviesDrive",
-      "description": "MoviesDrive streaming with multiple quality options",
+      "description": "MoviesDrive streaming with multiple quality options and versions",
       "version": "1.1.1",
       "author": "Phisher",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "filename": "src/providers/moviesdrive.js",
       "enabled": true,
-      "formats": ["mp4", "mkv"],
+      "formats": [
+        "mp4",
+        "mkv"
+      ],
       "logo": "https://i.imgur.com/9bGkGMi.png",
-      "contentLanguage": ["en"]
+      "contentLanguage": [
+        "en"
+      ]
     },
     {
       "id": "HiAnime",
@@ -21,47 +29,41 @@
       "description": "HiAnime Anime Streaming",
       "version": "1.5.0",
       "author": "Phisher",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "filename": "src/providers/hianime.js",
       "enabled": true,
-      "formats": ["mp4", "mkv"],
+      "formats": [
+        "mp4",
+        "mkv"
+      ],
       "logo": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/hianime.png",
-      "contentLanguage": ["en"]
+      "contentLanguage": [
+        "en"
+      ]
     },
     {
       "id": "XDMovies",
       "name": "XDMovies",
-      "description": "XDMovies Multi-Lang Movies/TVSeries",
+      "description": "XDMovies Multi-Lang Movies/TVSeries Streaming",
       "version": "1.0.13",
       "author": "Phisher",
-      "supportedTypes": ["movie", "tv"],
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "filename": "src/providers/xdmovies.js",
       "enabled": true,
-      "formats": ["mp4", "mkv"],
+      "formats": [
+        "mp4",
+        "mkv"
+      ],
       "logo": "https://xdmovies.site/assets/logo1.png",
-      "contentLanguage": ["hi"]
-    },
-    {
-      "id": "TwoEmbed",
-      "name": "TwoEmbed",
-      "description": "TwoEmbed multi-source embeds for movies and series",
-      "version": "1.0.0",
-      "author": "Phisher",
-      "supportedTypes": ["movie", "tv"],
-      "filename": "src/providers/twoembed.js",
-      "enabled": true,
-      "formats": ["mp4", "mkv"],
-      "logo": "https://twoembed.stream/logo.png",
-      "contentLanguage": ["en"]
+      "contentLanguage": [
+        "hi"
+      ]
     }
-    // Ajoute ici les autres que tu veux (ex. UHDMovies, VidSrc, etc.)
-    // Exemple :
-    // {
-    //   "id": "UHDMovies",
-    //   "name": "UHDMovies",
-    //   "filename": "src/providers/uhdmovies.js",
-    //   "enabled": true,
-    //   ...
-    // }
   ]
 }
