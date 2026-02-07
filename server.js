@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 3000;
 function getLocalIp() {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces ) {
+    for (const iface of interfaces[name]) {
       if (iface.family === 'IPv4' && !iface.internal) {
         return iface.address;
       }
@@ -27,13 +27,10 @@ const mimeTypes = {
   '.html': 'text/html',
 };
 
-const TMDB_API = 'https://api.themoviedb.org/3';
-const TMDB_KEY = 'df5dcd6d4165ec9331b40b47411256c4'; // ta clé
-
 const server = http.createServer(async (req, res) => {
   console.log(`${req.method} ${req.url}`);
 
-  // CORS
+  // CORS (ouvert à tous pour test)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -48,115 +45,121 @@ const server = http.createServer(async (req, res) => {
   const pathname = parsedUrl.pathname;
   const query = parsedUrl.query;
 
-  // Route API
+  // Route API principale
   if (pathname === '/api/getStreams') {
     const tmdbId = query.tmdbId;
     const mediaType = query.mediaType || 'movie';
     const seasonNum = parseInt(query.seasonNum) || null;
     const episodeNum = parseInt(query.episodeNum) || null;
-    const specificProvider = query.provider;
+    const specificProvider = query.provider; // optionnel
 
     if (!tmdbId) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'tmdbId manquant' }));
+      res.end(JSON.stringify({ error: 'Paramètre tmdbId manquant' }));
       return;
     }
 
     try {
-      // 1. Récupérer les infos officielles du film/série
-      const detailUrl = `${TMDB_API}/${mediaType === 'tv' ? 'tv' : 'movie'}/${tmdbId}?api_key=${TMDB_KEY}&language=fr`;
-      const detailRes = await fetch(detailUrl);
-      if (!detailRes.ok) throw new Error('TMDB pas trouvé');
-      const detailData = await detailRes.json();
-
-      const originalTitle = detailData.title || detailData.original_name || detailData.original_title;
-      const realYear = new Date(detailData.release_date || detailData.first_air_date).getFullYear();
-      const realType = mediaType; // movie ou tv
-
-      console.log(`Vérification TMDB: ${originalTitle} (${realYear})`);
-
       const manifestPath = path.join(__dirname, 'manifest.json');
       const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-      const providersToRun = specificProvider
-        ? manifest.scrapers.filter(s => s.id === specificProvider && s.enabled)
-        : manifest.scrapers.filter(s => s.enabled && (!s.id.includes('HiAnime') || mediaType === 'tv')); // On garde HiAnime pour tv seulement
-
-      console.log(`Providers lancés: ${providersToRun.map(p => p.id).join(', ')}`);
 
       const allStreams = [];
+
+      // Filtre providers
+      const providersToRun = specificProvider
+        ? manifest.scrapers.filter(s => s.id === specificProvider && s.enabled)
+        : manifest.scrapers.filter(s => s.enabled);
+
+      console.log(`Providers lancés : ${providersToRun.map(p => p.id).join(', ')}`);
 
       for (const provider of providersToRun) {
         try {
           const providerPath = path.join(__dirname, provider.filename);
           const providerModule = require(providerPath);
-          if (!providerModule.getStreams) continue;
+
+          if (typeof providerModule.getStreams !== 'function') {
+            console.warn(`Provider ${provider.id} n'a pas de fonction getStreams`);
+            continue;
+          }
 
           const result = await providerModule.getStreams(tmdbId, mediaType, seasonNum, episodeNum);
-          if (!result || !Array.isArray(result)) continue;
 
-          result.forEach(stream => {
-            stream.fromProvider = provider.id;
-            // Vérif rapide de correspondance
-            if (stream.title && !stream.title.includes(originalTitle) && !stream.title.toLowerCase().includes(originalTitle.toLowerCase())) {
-              console.warn(`${provider.id}: titre ne correspond pas -> jeté`);
-              return;
-            }
-            // Vérif année (approximative)
-            if (stream.year && Math.abs(stream.year - realYear) > 2) {
-              console.warn(`${provider.id}: année différente (${stream.year} vs ${realYear}) -> jeté`);
-              return;
-            }
-            // Vérif type
-            if (realType === 'movie' && stream.isSeries) {
-              console.warn(`${provider.id}: c'est une série, mais demandé un film -> jeté`);
-              return;
-            }
-            allStreams.push(stream);
-          });
+          if (result && Array.isArray(result) && result.length > 0) {
+            result.forEach(stream => {
+              stream.fromProvider = provider.id;
+              allStreams.push(stream);
+            });
+            console.log(`${provider.id} → ${result.length} streams`);
+          } else {
+            console.log(`${provider.id} → aucun stream valide`);
+          }
         } catch (err) {
-          console.error(`Erreur ${provider.id}:`, err.message);
+          console.error(`Erreur dans ${provider.id} :`, err.message);
         }
       }
 
-      // Dédoublons + tri qualité
-      const seen = new Set();
-      const uniqueStreams = allStreams.filter(s => {
-        if (seen.has(s.url)) return false;
-        seen.add(s.url);
-        return true;
-      }).sort((a, b) => (b.quality === '2160p' ? 10 : b.quality === '1080p' ? 9 : 8) - (a.quality === '2160p' ? 10 : a.quality === '1080p' ? 9 : 8));
+      // Dédoublonnage par URL (garde le premier occurrence)
+      const uniqueStreams = [];
+      const seenUrls = new Set();
+
+      allStreams.forEach(stream => {
+        if (stream.url && !seenUrls.has(stream.url)) {
+          seenUrls.add(stream.url);
+          uniqueStreams.push(stream);
+        }
+      });
+
+      // Tri par qualité (meilleur en premier)
+      const qualOrder = { '2160p': 5, '1440p': 4, '1080p': 3, '720p': 2, '480p': 1, 'Unknown': 0 };
+      uniqueStreams.sort((a, b) => (qualOrder[b.quality] || 0) - (qualOrder[a.quality] || 0));
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(uniqueStreams));
     } catch (err) {
+      console.error('Erreur globale API :', err.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: err.message }));
+      res.end(JSON.stringify({ error: 'Erreur interne du serveur' }));
     }
     return;
   }
 
-  // Fichiers statiques
+  // Servir fichiers statiques (manifest, logos, index.html si présent)
   let filePath = path.join(__dirname, pathname === '/' ? 'index.html' : pathname);
+
   if (!filePath.startsWith(__dirname)) {
-    res.writeHead(403); res.end('Nope');
+    res.writeHead(403);
+    res.end('Accès interdit');
     return;
   }
-  const extname = path.extname(filePath);
-  const contentType = mimeTypes || 'application/octet-stream';
 
-  fs.readFile(filePath, (err, data) => {
+  const extname = path.extname(filePath);
+  const contentType = mimeTypes[extname] || 'application/octet-stream';
+
+  fs.readFile(filePath, (err, content) => {
     if (err) {
-      if (err.code === 'ENOENT' && pathname === '/') {
-        res.writeHead(200, { 'Content-Type': 'text/plain' });
-        res.end('Serveur Nuvio. Utilise /api/getStreams ?tmdbId=...');
-      } else res.writeHead(500); res.end('Erreur');
+      if (err.code === 'ENOENT') {
+        if (pathname === '/') {
+          res.writeHead(200, { 'Content-Type': 'text/plain' });
+          res.end('Serveur Nuvio actif. Utilisez /manifest.json ou /api/getStreams?tmdbId=...');
+          return;
+        }
+        res.writeHead(404);
+        res.end(`Non trouvé : ${req.url}`);
+      } else {
+        res.writeHead(500);
+        res.end('Erreur serveur');
+      }
     } else {
       res.writeHead(200, { 'Content-Type': contentType });
-      res.end(data);
+      res.end(content);
     }
   });
 });
 
 server.listen(PORT, () => {
-  console.log(`Serveur sur http://${getLocalIp()}:${PORT}/`);
+  const ip = getLocalIp();
+  console.log(`Serveur lancé sur http://${ip}:${PORT}/`);
+  console.log(`Manifest : http://${ip}:${PORT}/manifest.json`);
+  console.log(`Exemple API film : http://${ip}:${PORT}/api/getStreams?tmdbId=27205&mediaType=movie`);
+  console.log(`Exemple série : http://${ip}:${PORT}/api/getStreams?tmdbId=76479&mediaType=tv&seasonNum=1&episodeNum=1`);
 });
