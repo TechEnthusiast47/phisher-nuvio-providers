@@ -1,7 +1,7 @@
 // ================= XDmovies =================
 const cheerio = require('cheerio-without-node-native');
 
-const XDMOVIES_API = "https://xdmovies.site";
+const XDMOVIES_API = "https://new.xdmovies.wtf";
 
 // TMDB API Configuration
 const TMDB_API_KEY = '439c478a771f35c05022f9feabcca01c';
@@ -279,7 +279,6 @@ function hubDriveExtractor(url, referer) {
 
 function hubCloudExtractor(url, referer) {
     let currentUrl = url;
-
     // Replicate domain change logic from HubCloud extractor
     if (currentUrl.includes("hubcloud.ink")) {
         currentUrl = currentUrl.replace("hubcloud.ink", "hubcloud.dad");
@@ -378,8 +377,6 @@ function hubCloudExtractor(url, referer) {
                     return Promise.resolve();
                 }
 
-                //console.log(`[HubCloud] Found ${text} link ${link}`);
-
                 const fileName = header || headerDetails || 'Unknown';
 
                 if (text.includes("Download File")) {
@@ -451,7 +448,6 @@ function hubCloudExtractor(url, referer) {
                 }
 
                 if (link.includes("pixeldra")) {
-                    console.log('[HubCloud] Using Pixeldrain extractor for link:', link);
                     return pixelDrainExtractor(link,quality)
                         .then(extracted => {
                             links.push(...extracted.map(l => ({
@@ -674,7 +670,6 @@ function getStreams(tmdbId, mediaType = 'movie', season = null, episode = null) 
                                 const rawLinks = $('div.download-item a[href]')
                                     .map((_, a) => $(a).attr('href'))
                                     .get();
-
                                 return Promise.all(
                                     rawLinks.map(raw =>
                                         resolveRedirect(raw).then(finalUrl => {
