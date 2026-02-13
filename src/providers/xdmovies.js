@@ -341,7 +341,6 @@ function hubCloudExtractor(url, referer) {
 
             const size = $('i#size').text().trim();
             const header = $('div.card-header').text().trim();
-
             const getIndexQuality = (str) => {
                 const match = (str || '').match(/(\d{3,4})[pP]/);
                 return match ? parseInt(match[1]) : 2160;
@@ -379,7 +378,7 @@ function hubCloudExtractor(url, referer) {
                     return Promise.resolve();
                 }
 
-                console.log(`[HubCloud] Found ${text} link ${link}`);
+                //console.log(`[HubCloud] Found ${text} link ${link}`);
 
                 const fileName = header || headerDetails || 'Unknown';
 
@@ -452,7 +451,8 @@ function hubCloudExtractor(url, referer) {
                 }
 
                 if (link.includes("pixeldra")) {
-                    return pixelDrainExtractor(link)
+                    console.log('[HubCloud] Using Pixeldrain extractor for link:', link);
+                    return pixelDrainExtractor(link,quality)
                         .then(extracted => {
                             links.push(...extracted.map(l => ({
                                 ...l,
@@ -498,10 +498,19 @@ function hubCloudExtractor(url, referer) {
                         }
                     });
                 }
+                const host = new URL(link).hostname;
+
+                if (
+                    host.includes('hubcloud') ||
+                    host.includes('hubdrive') ||
+                    host.includes('hubcdn')
+                ) {
+                    return Promise.resolve();
+                }
 
                 return loadExtractor(link, finalUrl).then(r => links.push(...r));
-            });
 
+            });
             return Promise.all(processElements).then(() => links);
         })
         .catch(() => []);
@@ -665,6 +674,7 @@ function getStreams(tmdbId, mediaType = 'movie', season = null, episode = null) 
                                 const rawLinks = $('div.download-item a[href]')
                                     .map((_, a) => $(a).attr('href'))
                                     .get();
+
                                 return Promise.all(
                                     rawLinks.map(raw =>
                                         resolveRedirect(raw).then(finalUrl => {
