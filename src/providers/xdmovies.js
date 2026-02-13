@@ -1,15 +1,7 @@
 // ================= XDmovies =================
 const cheerio = require('cheerio-without-node-native');
 
-// Node-safe atob polyfill: prefer global.atob if present, otherwise use Buffer
-const atob = (typeof global !== 'undefined' && typeof global.atob === 'function')
-    ? global.atob
-    : (str) => Buffer.from(str, 'base64').toString('utf8');
-
 const XDMOVIES_API = "https://new.xdmovies.wtf";
-
-// Primary base URL used as default referer
-const MAIN_URL = XDMOVIES_API;
 
 // TMDB API Configuration
 const TMDB_API_KEY = '439c478a771f35c05022f9feabcca01c';
@@ -19,7 +11,7 @@ const XDMOVIES_HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
     "Referer": `${XDMOVIES_API}/`,
     "x-requested-with": "XMLHttpRequest",
-    "x-auth-token": Buffer.from("NzI5N3Nra2loa2Fqd25zZ2FrbGFrc2h1d2Q=", 'base64').toString('utf8')
+    "x-auth-token": atob("NzI5N3Nra2loa2Fqd25zZ2FrbGFrc2h1d2Q=")
 };
 
 const HEADERS = {
@@ -514,7 +506,6 @@ function hubCloudExtractor(url, referer) {
         })
         .catch(() => []);
 }
-
 
 
 // ================= HELPERS =================
