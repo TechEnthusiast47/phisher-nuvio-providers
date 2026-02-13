@@ -1,7 +1,15 @@
 // ================= XDmovies =================
 const cheerio = require('cheerio-without-node-native');
 
+// Node-safe atob polyfill: prefer global.atob if present, otherwise use Buffer
+const atob = (typeof global !== 'undefined' && typeof global.atob === 'function')
+    ? global.atob
+    : (str) => Buffer.from(str, 'base64').toString('utf8');
+
 const XDMOVIES_API = "https://new.xdmovies.wtf";
+
+// Primary base URL used as default referer
+const MAIN_URL = XDMOVIES_API;
 
 // TMDB API Configuration
 const TMDB_API_KEY = '439c478a771f35c05022f9feabcca01c';
@@ -11,7 +19,7 @@ const XDMOVIES_HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
     "Referer": `${XDMOVIES_API}/`,
     "x-requested-with": "XMLHttpRequest",
-    "x-auth-token": atob("NzI5N3Nra2loa2Fqd25zZ2FrbGFrc2h1d2Q=")
+    "x-auth-token": Buffer.from("NzI5N3Nra2loa2Fqd25zZ2FrbGFrc2h1d2Q=", 'base64').toString('utf8')
 };
 
 const HEADERS = {
@@ -279,6 +287,7 @@ function hubDriveExtractor(url, referer) {
 
 function hubCloudExtractor(url, referer) {
     let currentUrl = url;
+
     // Replicate domain change logic from HubCloud extractor
     if (currentUrl.includes("hubcloud.ink")) {
         currentUrl = currentUrl.replace("hubcloud.ink", "hubcloud.dad");
@@ -340,6 +349,7 @@ function hubCloudExtractor(url, referer) {
 
             const size = $('i#size').text().trim();
             const header = $('div.card-header').text().trim();
+
             const getIndexQuality = (str) => {
                 const match = (str || '').match(/(\d{3,4})[pP]/);
                 return match ? parseInt(match[1]) : 2160;
@@ -376,6 +386,8 @@ function hubCloudExtractor(url, referer) {
                 if (/telegram/i.test(text) || /telegram/i.test(link)) {
                     return Promise.resolve();
                 }
+
+                console.log(`[HubCloud] Found ${text} link ${link}`);
 
                 const fileName = header || headerDetails || 'Unknown';
 
@@ -448,7 +460,7 @@ function hubCloudExtractor(url, referer) {
                 }
 
                 if (link.includes("pixeldra")) {
-                    return pixelDrainExtractor(link,quality)
+                    return pixelDrainExtractor(link)
                         .then(extracted => {
                             links.push(...extracted.map(l => ({
                                 ...l,
@@ -494,23 +506,15 @@ function hubCloudExtractor(url, referer) {
                         }
                     });
                 }
-                const host = new URL(link).hostname;
-
-                if (
-                    host.includes('hubcloud') ||
-                    host.includes('hubdrive') ||
-                    host.includes('hubcdn')
-                ) {
-                    return Promise.resolve();
-                }
 
                 return loadExtractor(link, finalUrl).then(r => links.push(...r));
-
             });
+
             return Promise.all(processElements).then(() => links);
         })
         .catch(() => []);
 }
+
 
 
 // ================= HELPERS =================
