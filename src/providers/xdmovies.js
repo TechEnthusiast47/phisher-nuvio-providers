@@ -1,7 +1,7 @@
 // ================= XDmovies =================
 const cheerio = require('cheerio-without-node-native');
 
-const XDMOVIES_API = "https://xdmovies.site";
+const XDMOVIES_API = "https://new.xdmovies.wtf";
 
 // TMDB API Configuration
 const TMDB_API_KEY = '439c478a771f35c05022f9feabcca01c';
