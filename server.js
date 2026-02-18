@@ -30,7 +30,7 @@ const mimeTypes = {
 const server = http.createServer(async (req, res) => {
   console.log(`${req.method} ${req.url}`);
 
-  // CORS (ouvert à tous pour test)
+  // CORS ouvert
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -45,17 +45,36 @@ const server = http.createServer(async (req, res) => {
   const pathname = parsedUrl.pathname;
   const query = parsedUrl.query;
 
-  // Route API principale
+  // Route racine : infos claires
+  if (pathname === '/') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      message: "API Nuvio Providers (mise à jour) – HiAnime limité aux séries/anime",
+      endpoints: {
+        getStreams: "/api/getStreams?tmdbId=19995&mediaType=movie",
+        manifest: "/manifest.json",
+        exemples: [
+          "Film Avatar: /api/getStreams?tmdbId=19995&mediaType=movie",
+          "Anime film (Demon Slayer): /api/getStreams?tmdbId=129003&mediaType=movie",
+          "Série anime (One Piece): /api/getStreams?tmdbId=37854&mediaType=tv&seasonNum=1&episodeNum=1"
+        ]
+      },
+      note: "HiAnime ignoré pour les films live-action (mediaType=movie)"
+    }));
+    return;
+  }
+
+  // Route principale : streams
   if (pathname === '/api/getStreams') {
     const tmdbId = query.tmdbId;
     const mediaType = query.mediaType || 'movie';
-    const seasonNum = parseInt(query.seasonNum) || null;
-    const episodeNum = parseInt(query.episodeNum) || null;
-    const specificProvider = query.provider; // optionnel
+    const seasonNum = query.seasonNum ? parseInt(query.seasonNum) : null;
+    const episodeNum = query.episodeNum ? parseInt(query.episodeNum) : null;
+    const specificProvider = query.provider;
 
     if (!tmdbId) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Paramètre tmdbId manquant' }));
+      res.end(JSON.stringify({ error: 'tmdbId obligatoire' }));
       return;
     }
 
@@ -65,20 +84,29 @@ const server = http.createServer(async (req, res) => {
 
       const allStreams = [];
 
-      // Filtre providers
       const providersToRun = specificProvider
         ? manifest.scrapers.filter(s => s.id === specificProvider && s.enabled)
         : manifest.scrapers.filter(s => s.enabled);
 
-      console.log(`Providers lancés : ${providersToRun.map(p => p.id).join(', ')}`);
+      console.log(`Providers à exécuter : ${providersToRun.map(p => p.id).join(', ')}`);
 
       for (const provider of providersToRun) {
+        // Règle stricte : HiAnime → uniquement séries (tv) ou anime films
+        if (provider.id === 'HiAnime') {
+          if (mediaType === 'movie') {
+            console.log('HiAnime ignoré : mediaType = movie (films live-action)');
+            continue;
+          }
+          // Si c'est une série, on laisse passer
+          console.log('HiAnime autorisé : mediaType = tv');
+        }
+
         try {
           const providerPath = path.join(__dirname, provider.filename);
           const providerModule = require(providerPath);
 
           if (typeof providerModule.getStreams !== 'function') {
-            console.warn(`Provider ${provider.id} n'a pas de fonction getStreams`);
+            console.warn(`Provider ${provider.id} sans getStreams`);
             continue;
           }
 
@@ -91,14 +119,14 @@ const server = http.createServer(async (req, res) => {
             });
             console.log(`${provider.id} → ${result.length} streams`);
           } else {
-            console.log(`${provider.id} → aucun stream valide`);
+            console.log(`${provider.id} → aucun stream`);
           }
         } catch (err) {
-          console.error(`Erreur dans ${provider.id} :`, err.message);
+          console.error(`Erreur ${provider.id} :`, err.message);
         }
       }
 
-      // Dédoublonnage par URL (garde le premier occurrence)
+      // Dédoublonnage + tri qualité
       const uniqueStreams = [];
       const seenUrls = new Set();
 
@@ -109,21 +137,20 @@ const server = http.createServer(async (req, res) => {
         }
       });
 
-      // Tri par qualité (meilleur en premier)
       const qualOrder = { '2160p': 5, '1440p': 4, '1080p': 3, '720p': 2, '480p': 1, 'Unknown': 0 };
       uniqueStreams.sort((a, b) => (qualOrder[b.quality] || 0) - (qualOrder[a.quality] || 0));
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(uniqueStreams));
     } catch (err) {
-      console.error('Erreur globale API :', err.message);
+      console.error('Erreur globale :', err.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Erreur interne du serveur' }));
+      res.end(JSON.stringify({ error: 'Erreur serveur', details: err.message }));
     }
     return;
   }
 
-  // Servir fichiers statiques (manifest, logos, index.html si présent)
+  // Servir manifest ou fichiers statiques
   let filePath = path.join(__dirname, pathname === '/' ? 'index.html' : pathname);
 
   if (!filePath.startsWith(__dirname)) {
@@ -138,11 +165,6 @@ const server = http.createServer(async (req, res) => {
   fs.readFile(filePath, (err, content) => {
     if (err) {
       if (err.code === 'ENOENT') {
-        if (pathname === '/') {
-          res.writeHead(200, { 'Content-Type': 'text/plain' });
-          res.end('Serveur Nuvio actif. Utilisez /manifest.json ou /api/getStreams?tmdbId=...');
-          return;
-        }
         res.writeHead(404);
         res.end(`Non trouvé : ${req.url}`);
       } else {
@@ -160,6 +182,5 @@ server.listen(PORT, () => {
   const ip = getLocalIp();
   console.log(`Serveur lancé sur http://${ip}:${PORT}/`);
   console.log(`Manifest : http://${ip}:${PORT}/manifest.json`);
-  console.log(`Exemple API film : http://${ip}:${PORT}/api/getStreams?tmdbId=27205&mediaType=movie`);
-  console.log(`Exemple série : http://${ip}:${PORT}/api/getStreams?tmdbId=76479&mediaType=tv&seasonNum=1&episodeNum=1`);
+  console.log(`API : http://${ip}:${PORT}/api/getStreams?tmdbId=19995&mediaType=movie`);
 });
