@@ -6,6 +6,21 @@ const url = require('url');
 
 const PORT = process.env.PORT || 3000;
 
+// Headers communs ultra-réalistes (imitent un iPhone Safari 2026)
+const COMMON_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
+  'Accept': 'application/json, text/plain, */*',
+  'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Origin': 'https://novelhubapp.com',
+  'Referer': 'https://novelhubapp.com/',
+  'Sec-Fetch-Dest': 'empty',
+  'Sec-Fetch-Mode': 'cors',
+  'Sec-Fetch-Site': 'same-origin',
+  'Connection': 'keep-alive',
+  'X-Requested-With': 'XMLHttpRequest'
+};
+
 function getLocalIp() {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
@@ -45,26 +60,21 @@ const server = http.createServer(async (req, res) => {
   const pathname = parsedUrl.pathname;
   const query = parsedUrl.query;
 
-  // Route racine : infos claires
+  // Route racine
   if (pathname === '/') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
-      message: "API Nuvio Providers (mise à jour) – HiAnime limité aux séries/anime",
+      message: "API Nuvio Providers active – Headers renforcés pour contourner Cloudflare",
       endpoints: {
         getStreams: "/api/getStreams?tmdbId=19995&mediaType=movie",
-        manifest: "/manifest.json",
-        exemples: [
-          "Film Avatar: /api/getStreams?tmdbId=19995&mediaType=movie",
-          "Anime film (Demon Slayer): /api/getStreams?tmdbId=129003&mediaType=movie",
-          "Série anime (One Piece): /api/getStreams?tmdbId=37854&mediaType=tv&seasonNum=1&episodeNum=1"
-        ]
+        manifest: "/manifest.json"
       },
-      note: "HiAnime ignoré pour les films live-action (mediaType=movie)"
+      note: "HiAnime ignoré pour mediaType=movie"
     }));
     return;
   }
 
-  // Route principale : streams
+  // Route streams
   if (pathname === '/api/getStreams') {
     const tmdbId = query.tmdbId;
     const mediaType = query.mediaType || 'movie';
@@ -88,17 +98,13 @@ const server = http.createServer(async (req, res) => {
         ? manifest.scrapers.filter(s => s.id === specificProvider && s.enabled)
         : manifest.scrapers.filter(s => s.enabled);
 
-      console.log(`Providers à exécuter : ${providersToRun.map(p => p.id).join(', ')}`);
+      console.log(`Providers lancés : ${providersToRun.map(p => p.id).join(', ')}`);
 
       for (const provider of providersToRun) {
-        // Règle stricte : HiAnime → uniquement séries (tv) ou anime films
-        if (provider.id === 'HiAnime') {
-          if (mediaType === 'movie') {
-            console.log('HiAnime ignoré : mediaType = movie (films live-action)');
-            continue;
-          }
-          // Si c'est une série, on laisse passer
-          console.log('HiAnime autorisé : mediaType = tv');
+        // Filtre HiAnime : uniquement pour séries (tv)
+        if (provider.id === 'HiAnime' && mediaType === 'movie') {
+          console.log('HiAnime ignoré : mediaType = movie (films live-action)');
+          continue;
         }
 
         try {
@@ -110,7 +116,8 @@ const server = http.createServer(async (req, res) => {
             continue;
           }
 
-          const result = await providerModule.getStreams(tmdbId, mediaType, seasonNum, episodeNum);
+          // On passe les headers communs au provider (il peut les overrider)
+          const result = await providerModule.getStreams(tmdbId, mediaType, seasonNum, episodeNum, COMMON_HEADERS);
 
           if (result && Array.isArray(result) && result.length > 0) {
             result.forEach(stream => {
@@ -126,7 +133,7 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      // Dédoublonnage + tri qualité
+      // Dédoublonnage + tri
       const uniqueStreams = [];
       const seenUrls = new Set();
 
